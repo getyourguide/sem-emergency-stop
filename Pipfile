@@ -1,0 +1,18 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+sem-emergency-stop = {path = ".",editable = true}
+flake8 = "*"
+black = "*"
+twine = "*"
+
+[packages]
+
+[requires]
+python_version = "3.7"
+
+[pipenv]
+allow_prereleases = true
