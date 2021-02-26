@@ -33,17 +33,16 @@ def parse_customer_id(resource_name):
     return int(match_customer_id(resource_name).group(1))
 
 
-def query(client, customer_id, query):
-    return client.get_service('GoogleAdsService', version='v3').search_stream(
-        str(customer_id), query
-    )
+def query(service, customer_id, query):
+    return service.search_stream(str(customer_id), query)
 
 
 def collect_customer_ids(client):
+    service = client.get_service('GoogleAdsService', version='v6')
     return [
         parse_customer_id(row.customer_client.resource_name)
         for response in query(
-            client,
+            service,
             client.login_customer_id,
             'SELECT customer.id FROM customer_client',
         )
@@ -87,10 +86,11 @@ def store_campaign_sets(campaign_sets):
 
 
 def collect_campaign_ids(client, customer_id):
+    service = client.get_service('GoogleAdsService', version='v6')
     return [
-        row.campaign.id.value
+        row.campaign.id
         for response in query(
-            client,
+            service,
             customer_id,
             """
                 SELECT campaign.id
@@ -98,7 +98,8 @@ def collect_campaign_ids(client, customer_id):
                 WHERE
                 campaign.status = 'ENABLED'
                 AND campaign.experiment_type = 'BASE'
-                AND campaign.advertising_channel_type != 'VIDEO'""",
+                AND campaign.advertising_channel_type != 'VIDEO'
+                AND campaign.advertising_channel_type != 'LOCAL'""",
         )
         for row in response.results
     ]
@@ -120,10 +121,10 @@ def retrieve_campaign_ids(client, verbose, customer_ids, campaign_sets):
 
 
 def get_operation(client, service, customer_id, campaign_id, is_pause):
-    operation = client.get_type('CampaignOperation', version='v3')
+    operation = client.get_type('CampaignOperation', version='v6')
     campaign = operation.update
     campaign.resource_name = service.campaign_path(customer_id, campaign_id)
-    enum = client.get_type('CampaignStatusEnum', version='v3')
+    enum = client.get_type('CampaignStatusEnum', version='v6')
     campaign.status = enum.PAUSED if is_pause else enum.ENABLED
     operation.update_mask.CopyFrom(protobuf_helpers.field_mask(None, campaign))
 
@@ -163,7 +164,7 @@ def mutate_campaigns(
 
 
 def mutate_worker(client, verbose, no_dry_run, is_pause, campaign_set_queue):
-    service = client.get_service('CampaignService', version='v3')
+    service = client.get_service('CampaignService', version='v6')
 
     while True:
         try:
@@ -275,7 +276,7 @@ def parse_arguments(args):
         help='use NUM workers in parallel',
         type=int,
         metavar='NUM',
-        default=25,
+        default=16,
     )
     all_shared.add_argument('-v', '--verbose', action='store_true')
 
