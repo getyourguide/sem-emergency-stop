@@ -248,7 +248,7 @@ def pause_unpause(client, args, is_pause):
     print('done')
     if is_pause:
         print('you can unpause by running')
-        print(f'sem-emergency-stop unpause {campaign_sets}')
+        print(f'{sys.argv[0]} unpause --no-dry-run {campaign_sets}')
 
 
 def pause(client, args):
