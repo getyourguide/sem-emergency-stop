@@ -1,5 +1,7 @@
 # sem-emergency-stop
 
+![Logo](doc/sem-emergency-stop.svg)
+
 Stop all Google Ads marketing. This utility will pause all marketing campaigns on Google Ads (presumably across many accounts) as fast as possible. The main use case is emergency response during incidents where all landing pages are temporarily unavailable, thereby incurring cost without revenue. Unpausing the paused campaigns (and only those) is also supported.
 
 
@@ -53,6 +55,6 @@ For sensitive security matters please contact [security@getyourguide.com](mailto
 
 ## Legal
 
-Copyright 2020 GetYourGuide GmbH.
+Copyright 2021 GetYourGuide GmbH.
 
 sem-emergency-stop is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full text.
