@@ -21,7 +21,7 @@ A hash will be printed at the end of the process. Use this hash to unpause when 
 Install the tool (requires Python 3.7 or higher; on Ubuntu 18.04 install `python3.7-minimal`):
 
 ```shell
-pip3 install --user sem-emergency-pause
+pip3 install --user sem-emergency-stop
 ```
 
 You can then run `sem-emergency-stop setup` to authenticate the tool against the API using your Google account. This will request two pieces of information from you:

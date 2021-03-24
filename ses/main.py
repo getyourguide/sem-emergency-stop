@@ -8,6 +8,7 @@ from queue import Queue, Empty
 from threading import Thread
 from itertools import zip_longest
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
+from collections import defaultdict
 
 from google.ads.google_ads.client import GoogleAdsClient
 from google.api_core import protobuf_helpers
@@ -105,7 +106,9 @@ def collect_campaign_ids(client, customer_id):
     ]
 
 
-def retrieve_campaign_ids(client, verbose, customer_ids, campaign_sets):
+def retrieve_campaign_ids(
+    client, verbose, customer_ids, campaign_sets, progress_queue
+):
     while True:
         try:
             customer_id = customer_ids.get_nowait()
@@ -115,8 +118,8 @@ def retrieve_campaign_ids(client, verbose, customer_ids, campaign_sets):
         ids = collect_campaign_ids(client, customer_id)
         campaign_set = store_customer_campaign_set(customer_id, ids)
         campaign_sets.put(campaign_set)
-        if verbose:
-            print(f"found {len(ids)} campaign(s) for customer {customer_id}")
+        progress_queue.put_nowait(('customers', 1))
+        progress_queue.put_nowait(('campaigns', len(ids)))
         customer_ids.task_done()
 
 
@@ -139,11 +142,13 @@ def mutate_campaigns(
     no_dry_run,
     is_pause,
     campaign_set_queue,
+    progress_queue,
 ):
     campaign_set = load_blob(sha1_hash)
     customer_id = campaign_set['customer_id']
     campaign_ids = campaign_set['campaign_ids']
     if not campaign_ids:
+        progress_queue.put(('customers', 1))
         return
 
     for chunk in grouper(campaign_ids, 1000):
@@ -153,17 +158,18 @@ def mutate_campaigns(
             if campaign_id
         ]
 
-        if verbose:
-            print(
-                f'mutating {len(operations)} campaign(s) '
-                f'for customer {customer_id}'
-            )
         service.mutate_campaigns(
             str(customer_id), operations, validate_only=not no_dry_run
         )
 
+        progress_queue.put(('campaigns', len(operations)))
 
-def mutate_worker(client, verbose, no_dry_run, is_pause, campaign_set_queue):
+    progress_queue.put(('customers', 1))
+
+
+def mutate_worker(
+    client, verbose, no_dry_run, is_pause, campaign_set_queue, progress_queue
+):
     service = client.get_service('CampaignService', version='v6')
 
     while True:
@@ -181,6 +187,7 @@ def mutate_worker(client, verbose, no_dry_run, is_pause, campaign_set_queue):
                 no_dry_run,
                 is_pause,
                 campaign_set_queue,
+                progress_queue,
             )
         except Exception:
             # We don't want this worker thread to die and block joining
@@ -203,52 +210,116 @@ def start_workers(num, func, args):
         Thread(target=func, args=args).start()
 
 
+def progress_monitor(totals, progress_queue, exit_queue):
+    progress = defaultdict(int)
+
+    while True:
+        metric, n = progress_queue.get()
+        progress[metric] += n
+
+        end = "\n" if metric == 'exit' else "\r"
+        print(
+            f" completed {progress['customers']}/{totals['customers']} "
+            f"customers and {progress['campaigns']} campaigns",
+            end=end,
+        )
+
+        if metric == 'exit':
+            exit_queue.put(True)
+            return
+
+
+def start_progress_monitor(totals):
+    progress_queue = Queue()
+    exit_queue = Queue()
+    Thread(
+        target=progress_monitor, args=(totals, progress_queue, exit_queue)
+    ).start()
+    return progress_queue, exit_queue
+
+
 def collect(client, args):
     customer_id_queue = Queue()
     campaign_set_queue = Queue()
 
-    print('getting customer ids...')
+    print('[1/3] getting customer ids...')
     customer_ids = collect_customer_ids(client)
-    print(f'found {len(customer_ids)} customer(s)')
+    customer_count = len(customer_ids)
+
+    if customer_count == 1:
+        print('found one customer')
+    else:
+        print(f'found {customer_count} customers')
 
     for customer_id in customer_ids:
         customer_id_queue.put(customer_id)
 
-    print('getting campaign ids...')
+    progress_queue, exit_queue = start_progress_monitor(
+        {'customers': customer_count}
+    )
+    progress_queue.put_nowait(('init', 1))
+
+    print('[2/3] getting campaign ids...')
     start_workers(
         args.workers,
         retrieve_campaign_ids,
-        (client, args.verbose, customer_id_queue, campaign_set_queue),
+        (
+            client,
+            args.verbose,
+            customer_id_queue,
+            campaign_set_queue,
+            progress_queue,
+        ),
     )
 
     customer_id_queue.join()
+    progress_queue.put_nowait(('exit', 1))
+    exit_queue.get()
+
     campaign_sets = store_campaign_sets(get_all(campaign_set_queue))
-    print(f'committed campaign sets {campaign_sets}')
+    print(f'[2/3] committed campaign sets {campaign_sets}')
 
     return campaign_sets
 
 
 def pause_unpause(client, args, is_pause):
-    campaign_sets = args.campaign_sets or collect(client, args)
+    campaign_sets_id = args.campaign_sets or collect(client, args)
+    step_num = 1 if args.campaign_sets else 3
+    step = f'[{step_num}/{step_num}]'
 
-    print(f'loading campaign sets {campaign_sets}...')
+    print(f'{step} loading campaign sets {campaign_sets_id}...')
     campaign_set_queue = Queue()
-    for campaign_set in load_campaign_sets(campaign_sets):
+    campaign_sets = load_campaign_sets(campaign_sets_id)
+    for campaign_set in campaign_sets:
         campaign_set_queue.put(campaign_set)
 
-    print(f"{'' if is_pause else 'un'}pausing campaigns...")
+    progress_queue, exit_queue = start_progress_monitor(
+        {'customers': len(campaign_sets)}
+    )
+    progress_queue.put_nowait(('init', 1))
+
+    print(f"{step} {'' if is_pause else 'un'}pausing campaigns...")
     start_workers(
         args.workers,
         mutate_worker,
-        (client, args.verbose, args.no_dry_run, is_pause, campaign_set_queue),
+        (
+            client,
+            args.verbose,
+            args.no_dry_run,
+            is_pause,
+            campaign_set_queue,
+            progress_queue,
+        ),
     )
 
     campaign_set_queue.join()
+    progress_queue.put_nowait(('exit', 1))
+    exit_queue.get()
 
     print('done')
     if is_pause:
         print('you can unpause by running')
-        print(f'{sys.argv[0]} unpause --no-dry-run {campaign_sets}')
+        print(f'{sys.argv[0]} unpause --no-dry-run {campaign_sets_id}')
 
 
 def pause(client, args):
