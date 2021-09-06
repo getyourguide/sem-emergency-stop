@@ -10,7 +10,7 @@ from itertools import zip_longest
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from collections import defaultdict
 
-from google.ads.google_ads.client import GoogleAdsClient
+from google.ads.googleads.client import GoogleAdsClient
 from google.api_core import protobuf_helpers
 
 from .banner import banner
@@ -35,11 +35,11 @@ def parse_customer_id(resource_name):
 
 
 def query(service, customer_id, query):
-    return service.search_stream(str(customer_id), query)
+    return service.search_stream(customer_id=str(customer_id), query=query)
 
 
 def collect_customer_ids(client):
-    service = client.get_service('GoogleAdsService', version='v6')
+    service = client.get_service('GoogleAdsService', version='v8')
     return [
         parse_customer_id(row.customer_client.resource_name)
         for response in query(
@@ -87,7 +87,7 @@ def store_campaign_sets(campaign_sets):
 
 
 def collect_campaign_ids(client, customer_id):
-    service = client.get_service('GoogleAdsService', version='v6')
+    service = client.get_service('GoogleAdsService', version='v8')
     return [
         row.campaign.id
         for response in query(
@@ -124,10 +124,10 @@ def retrieve_campaign_ids(
 
 
 def get_operation(client, service, customer_id, campaign_id, is_pause):
-    operation = client.get_type('CampaignOperation', version='v6')
+    operation = client.get_type('CampaignOperation', version='v8')
     campaign = operation.update
     campaign.resource_name = service.campaign_path(customer_id, campaign_id)
-    enum = client.get_type('CampaignStatusEnum', version='v6')
+    enum = client.get_type('CampaignStatusEnum', version='v8')
     campaign.status = enum.PAUSED if is_pause else enum.ENABLED
     operation.update_mask.CopyFrom(protobuf_helpers.field_mask(None, campaign))
 
@@ -152,17 +152,21 @@ def mutate_campaigns(
         return
 
     for chunk in grouper(campaign_ids, 1000):
-        operations = [
-            get_operation(client, service, customer_id, campaign_id, is_pause)
-            for campaign_id in chunk
-            if campaign_id
-        ]
+        request = client.get_type('MutateCampaignsRequest')
+        request.customer_id = str(customer_id)
+        request.validate_only = not no_dry_run
 
-        service.mutate_campaigns(
-            str(customer_id), operations, validate_only=not no_dry_run
-        )
+        for campaign_id in chunk:
+            if campaign_id:
+                request.operations.append(
+                    get_operation(
+                        client, service, customer_id, campaign_id, is_pause
+                    )
+                )
 
-        progress_queue.put(('campaigns', len(operations)))
+        service.mutate_campaigns(request)
+
+        progress_queue.put(('campaigns', len(request.operations)))
 
     progress_queue.put(('customers', 1))
 
@@ -170,7 +174,7 @@ def mutate_campaigns(
 def mutate_worker(
     client, verbose, no_dry_run, is_pause, campaign_set_queue, progress_queue
 ):
-    service = client.get_service('CampaignService', version='v6')
+    service = client.get_service('CampaignService', version='v8')
 
     while True:
         try:
@@ -402,6 +406,7 @@ def run():
     credentials = {
         **load_organization_auth(),
         **load_user_auth(),
+        'use_proto_plus': False,
     }
 
     client = GoogleAdsClient.load_from_dict(credentials)
