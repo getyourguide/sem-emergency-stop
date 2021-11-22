@@ -33,9 +33,11 @@
       };
     };
 
-    defaultPackage = packages.sem-emergency-stop;
     apps.sem-emergency-stop = flake-utils.lib.mkApp { drv = packages.sem-emergency-stop; };
+    apps.ses-reset-auth = flake-utils.lib.mkApp { drv = packages.sem-emergency-stop; name = "ses-reset-auth"; };
+    apps.ses-create-org-token = flake-utils.lib.mkApp { drv = packages.sem-emergency-stop; name = "ses-create-org-token"; };
     defaultApp = apps.sem-emergency-stop;
+    defaultPackage = packages.sem-emergency-stop;
   }
   );
 }
