@@ -1,21 +1,16 @@
 lint:
-	pipenv run flake8
-	pipenv run black --diff -l 79 -S ses
+	poetry run flake8
+	poetry run black --diff -l 79 -S ses
 .PHONY: lint
 
 develop:
-	pipenv install --dev
+	poetry install
 .PHONY: develop
 
 format:
-	pipenv run black -l 79 -S ses
+	poetry run black -l 79 -S ses
 .PHONY: format
 
-dist:
-	rm -f dist/*
-	pipenv run python setup.py sdist bdist_wheel
-.PHONY: dist
-
 publish: dist
-	pipenv run twine upload dist/*
+	poetry publish --build
 .PHONY: publish
