@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name='sem-emergency-stop',
-    version='1.3.0',
+    version='1.3.1',
     author='GetYourGuide GmbH',
     description='Quickly stop all Google Ads advertising',
     license='Apache License, Version 2.0',
@@ -12,9 +12,9 @@ setup(
     url='https://github.com/getyourguide/sem-emergency-stop',
     packages=find_packages(),
     include_package_data=True,
-    python_requires='>=3.7',
+    python_requires='>=3.8',
     install_requires=[
-        'google-ads==14.0.0',
+        'google-ads==15.0.0',
     ],
     entry_points={
         'console_scripts': [
