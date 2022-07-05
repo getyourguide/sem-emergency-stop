@@ -1,5 +1,5 @@
 lint:
-	pipenv run flake8
+	pipenv run flake8 ses
 	pipenv run black --diff -l 79 -S ses
 .PHONY: lint
 

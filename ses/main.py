@@ -45,7 +45,10 @@ def collect_customer_ids(client):
         for response in query(
             service,
             client.login_customer_id,
-            'SELECT customer.id FROM customer_client WHERE customer_client.status = "ENABLED"',
+            """
+                SELECT customer.id
+                FROM customer_client
+                WHERE customer_client.status = 'ENABLED'""",
         )
         for row in response.results
     ]
