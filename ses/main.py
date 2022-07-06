@@ -39,7 +39,7 @@ def query(service, customer_id, query):
 
 
 def collect_customer_ids(client):
-    service = client.get_service('GoogleAdsService', version='v10')
+    service = client.get_service('GoogleAdsService', version='v11')
     return [
         parse_customer_id(row.customer_client.resource_name)
         for response in query(
@@ -90,7 +90,7 @@ def store_campaign_sets(campaign_sets):
 
 
 def collect_campaign_ids(client, customer_id):
-    service = client.get_service('GoogleAdsService', version='v10')
+    service = client.get_service('GoogleAdsService', version='v11')
     return [
         row.campaign.id
         for response in query(
@@ -127,10 +127,10 @@ def retrieve_campaign_ids(
 
 
 def get_operation(client, service, customer_id, campaign_id, is_pause):
-    operation = client.get_type('CampaignOperation', version='v10')
+    operation = client.get_type('CampaignOperation', version='v11')
     campaign = operation.update
     campaign.resource_name = service.campaign_path(customer_id, campaign_id)
-    enum = client.get_type('CampaignStatusEnum', version='v10')
+    enum = client.get_type('CampaignStatusEnum', version='v11')
     campaign.status = enum.PAUSED if is_pause else enum.ENABLED
     operation.update_mask.CopyFrom(protobuf_helpers.field_mask(None, campaign))
 
@@ -177,7 +177,7 @@ def mutate_campaigns(
 def mutate_worker(
     client, verbose, no_dry_run, is_pause, campaign_set_queue, progress_queue
 ):
-    service = client.get_service('CampaignService', version='v10')
+    service = client.get_service('CampaignService', version='v11')
 
     while True:
         try:
