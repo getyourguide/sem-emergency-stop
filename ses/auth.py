@@ -1,9 +1,14 @@
 import os
+import re
+import sys
 import base64
 import json
+import hashlib
+import socket
 from base64 import b64decode
+from urllib.parse import unquote
 
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow
 
 
 app_directory = os.path.join(
@@ -131,16 +136,77 @@ def load_user_auth():
 
 
 def oauth_flow():
-    flow = InstalledAppFlow.from_client_secrets_file(
-        client_auth_file, scopes=[auth_scope]
+    host = '127.0.0.1'
+    port = 14711
+    redirect_uri = f'http://{host}:{port}'
+    flow = Flow.from_client_secrets_file(client_auth_file, scopes=[auth_scope])
+    flow.redirect_uri = redirect_uri
+
+    passthrough_val = hashlib.sha256(os.urandom(1024)).hexdigest()
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        state=passthrough_val,
+        prompt='consent',
+        include_granted_scopes='true',
     )
 
-    flow.run_console()
+    print('Paste this URL into your browser: ')
+    print(authorization_url)
+    print(f'\nWaiting for authorization and callback to: {redirect_uri}')
 
-    json.dump(
-        {'refresh_token': flow.credentials.refresh_token},
-        open(user_auth_file, 'w'),
-    )
+    code = unquote(get_authorization_code(passthrough_val, host, port))
+
+    flow.fetch_token(code=code)
+    refresh_token = flow.credentials.refresh_token
+
+    json.dump({'refresh_token': refresh_token}, open(user_auth_file, 'w'))
+
+
+def get_authorization_code(passthrough_val, host, port):
+    sock = socket.socket()
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((host, port))
+    sock.listen(1)
+    connection, address = sock.accept()
+    data = connection.recv(1024)
+    params = parse_raw_query_params(data)
+
+    try:
+        if not params.get('code'):
+            error = params.get('error')
+            message = f'Failed to retrieve authorization code. Error: {error}'
+            raise ValueError(message)
+        elif params.get('state') != passthrough_val:
+            message = 'State token does not match the expected state.'
+            raise ValueError(message)
+        else:
+            message = 'Authorization code was successfully retrieved.'
+    except ValueError as error:
+        print(error)
+        sys.exit(1)
+    finally:
+        response = (
+            'HTTP/1.1 200 OK\n'
+            'Content-Type: text/html\n\n'
+            f'<b>{message}</b>'
+            '<p>Please check the console output.</p>\n'
+        )
+
+        connection.sendall(response.encode())
+        connection.close()
+
+    return params.get('code')
+
+
+def parse_raw_query_params(data):
+    decoded = data.decode('utf-8')
+
+    match = re.search('GET\\s\\/\\?(.*) ', decoded)
+    params = match.group(1)
+
+    pairs = [pair.split('=') for pair in params.split('&')]
+
+    return {key: val for key, val in pairs}
 
 
 def organization_token_reader():
