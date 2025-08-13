@@ -14,7 +14,7 @@ setup(
     include_package_data=True,
     python_requires='>=3.8',
     install_requires=[
-        'google-ads==26.1.0',
+        'google-ads==28.0.0',
     ],
     entry_points={
         'console_scripts': [

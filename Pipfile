@@ -4,10 +4,10 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
-sem-emergency-stop = {path = ".",editable = true}
 flake8 = "*"
 black = "*"
 twine = "*"
+sem-emergency-stop = {file = ".", editable = true}
 
 [packages]
 
